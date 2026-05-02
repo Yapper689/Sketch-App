@@ -272,7 +272,9 @@ document.getElementById("btn-clear").addEventListener("click", () => {
     
     strokes = [];
     if (isOnlineMode) {
-        remove(strokesRef); // This absolutely nukes the collection from orbit
+        // Using 'set(..., null)' instead of 'remove()' forces Firebase to
+        // obliterate the node completely, ignoring any corrupted array mapping.
+        set(strokesRef, null).catch(err => console.error("Clear failed:", err)); 
     }
     localStorage.removeItem('storedStrokes');
     render();

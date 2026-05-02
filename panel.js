@@ -5,13 +5,15 @@ const iconMinimize = document.querySelector("#minimize-icon");
 const btnDark = document.querySelector("#btn-dark");
 const iconDark = document.querySelector("#dark-icon");
 const btnSave = document.querySelector("#btn-save");
+const btnFullscreen = document.querySelector("#btn-fullscreen");
+const iconFullscreen = document.querySelector("#fullscreen-icon");
 
 let isPointerDown = false;
 let offsetX = 0;
 let offsetY = 0;
 
 btnMinimize.addEventListener("click", (e) => {
-  e.stopPropagation(); // Stop click from triggering drag
+  e.stopPropagation(); 
   const headerHeight = `${header.clientHeight}px`;
   if (!wrapper.style.height || wrapper.style.height !== headerHeight) {
     wrapper.style.height = headerHeight;
@@ -39,21 +41,30 @@ btnDark.addEventListener("click", () => {
   }
 });
 
-// Reliable Dragging Logic
+// Fullscreen API Logic
+btnFullscreen.addEventListener("click", () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch((err) => {
+      console.log(`Error attempting to enable fullscreen: ${err.message}`);
+    });
+    iconFullscreen.classList.remove('fa-expand');
+    iconFullscreen.classList.add('fa-compress');
+  } else {
+    document.exitFullscreen();
+    iconFullscreen.classList.remove('fa-compress');
+    iconFullscreen.classList.add('fa-expand');
+  }
+});
+
 header.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   isPointerDown = true;
-  
-  // Get exact bounding box on screen
   const rect = wrapper.getBoundingClientRect();
   offsetX = e.clientX - rect.left;
   offsetY = e.clientY - rect.top;
-  
   wrapper.style.transition = 'none';
-  wrapper.classList.remove("left-5", "top-5", "m-auto"); // Strip tailwind positioning
-  wrapper.style.margin = "0"; // Strip auto-margin
-  
-  // Set explicit absolute position to prevent jumping
+  wrapper.classList.remove("left-2", "top-2", "md:left-5", "md:top-5"); 
+  wrapper.style.margin = "0"; 
   wrapper.style.left = rect.left + "px";
   wrapper.style.top = rect.top + "px";
 });
@@ -72,7 +83,6 @@ document.addEventListener("pointerup", () => {
   }
 });
 
-// Dynamic Import handles the package without crashing the file on load
 btnSave.addEventListener("click", async () => {
     try {
         const module = await import('https://esm.sh/save-svg-as-png');

@@ -3,8 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <!-- Lock down scaling to prevent double-tap and pinch zooming -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- These tags tell mobile browsers to hide the UI if added to the Home Screen -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <title>Whiteboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,16 +22,13 @@
         width: 100%; 
         height: 100%; 
         overflow: hidden; 
-        /* Prevents the annoying pull-to-refresh and elastic scrolling on mobile */
         overscroll-behavior: none; 
       }
     </style>
   </head>
-  <!-- Added touch-none to the body to globally prevent scrolling gestures while dragging the panel -->
   <body class="touch-none">
     <svg id="freehand-canvas" class="absolute inset-0 w-full h-full touch-none z-0 dark:bg-black"></svg>
     
-    <!-- Responsive sizing: w-[80px] on mobile, w-[100px] on md (tablets+) screens -->
     <div id="wrapper" class="bg-white w-[80px] md:w-[100px] rounded-2xl absolute left-2 top-2 md:left-5 md:top-5 drop-shadow-lg flex flex-col dark:bg-slate-800 transition-all ease-in-out duration-100 z-10">
       
       <div id="header" class="py-3 px-2 border-b border-gray-300 flex justify-center items-center cursor-move dark:border-slate-500">
@@ -37,7 +39,6 @@
       
       <div id="body" class="flex flex-col items-center justify-center flex-grow space-y-4 py-4">
         
-        <!-- Stack tools vertically on mobile, side-by-side on larger screens if needed (kept flex-col for tight fit) -->
         <div class="flex flex-col md:flex-row space-y-2 md:space-y-0 md:space-x-2 items-center">
             <div id="btn-draw" class="cursor-pointer bg-purple-200 dark:bg-slate-600 p-2 rounded-lg transition-colors">
                 <i class="fa-solid fa-pen text-base md:text-lg text-purple-700 dark:text-purple-400"></i>
@@ -62,23 +63,26 @@
         <div class="w-full border-t border-gray-200 dark:border-slate-600"></div>
 
         <div class="flex flex-col space-y-4 items-center">
+            <!-- Added Fullscreen button -->
+            <div id="btn-fullscreen" class="cursor-pointer">
+                <i id="fullscreen-icon" class="fa-solid fa-expand text-lg md:text-xl text-purple-700"></i>
+            </div>
             <div id="btn-save" class="cursor-pointer">
-            <i class="fa-regular fa-floppy-disk text-lg md:text-xl text-purple-700"></i>
+                <i class="fa-regular fa-floppy-disk text-lg md:text-xl text-purple-700"></i>
             </div>
             <div id="btn-clear" class="cursor-pointer">
-            <i class="fa-regular fa-trash-can text-lg md:text-xl text-purple-700"></i>
+                <i class="fa-regular fa-trash-can text-lg md:text-xl text-purple-700"></i>
             </div>
             <div id="btn-online" class="cursor-pointer">
-            <i id="online-icon" class="fa-solid fa-handshake-slash text-lg md:text-xl text-purple-700"></i>
+                <i id="online-icon" class="fa-solid fa-handshake-slash text-lg md:text-xl text-purple-700"></i>
             </div>
             <div id="btn-dark" class="cursor-pointer">
-            <i id="dark-icon" class="fa-regular fa-sun text-lg md:text-xl text-purple-700"></i>
+                <i id="dark-icon" class="fa-regular fa-sun text-lg md:text-xl text-purple-700"></i>
             </div>
         </div>
       </div>
     </div>
 
-    <!-- Responsive User Count -->
     <div id="user-count" class="absolute top-2 right-2 md:top-5 md:right-5 bg-white min-w-[80px] md:min-w-[100px] h-8 md:h-10 px-3 md:px-4 flex items-center justify-center font-sans text-sm md:text-base text-purple-700 rounded-md shadow-md dark:bg-slate-700 z-10">Users: 0</div>
     
     <script type="module" src="./panel.js"></script>
