@@ -1,6 +1,7 @@
 import { getStroke } from "https://esm.sh/perfect-freehand";
 import { initializeApp } from "https://esm.sh/firebase/app";
-import { getDatabase, ref, set, remove, onChildAdded, onChildChanged, onChildRemoved, onValue, onDisconnect } from "https://esm.sh/firebase/database";
+// Notice we added 'push' to the imports here
+import { getDatabase, ref, set, remove, onChildAdded, onChildChanged, onChildRemoved, onValue, onDisconnect, push } from "https://esm.sh/firebase/database";
 
 const firebaseConfig = {
   databaseURL: "https://draw-c7619-default-rtdb.asia-southeast1.firebasedatabase.app/",
@@ -20,6 +21,7 @@ let currentColor = colorInput.value;
 let currentSize = 16;
 let currentTool = 'draw';
 let isOnlineMode = false;
+let currentStrokeId = null; // Track the unique ID of the stroke currently being drawn
 
 colorInput.addEventListener('input', () => currentColor = colorInput.value);
 
@@ -81,12 +83,38 @@ onValue(ref(db, 'users'), (snapshot) => {
 });
 
 function initializeDatabase() {
-    strokes.forEach((stroke, index) => {
-        if(stroke) set(ref(db, `strokes/${index}`), stroke);
+    // Listen for new strokes cleanly
+    onChildAdded(strokesRef, (snapshot) => {
+        let data = snapshot.val();
+        let key = snapshot.key;
+        
+        // Backwards compatibility for old stuck arrays
+        if (Array.isArray(data)) { data = { points: data, color: '#000000', size: 16 }; }
+        
+        const existingIndex = strokes.findIndex(s => s.id === key);
+        if (existingIndex === -1) {
+            data.id = key;
+            strokes.push(data);
+            render();
+        }
     });
-    onChildAdded(strokesRef, (data) => { strokes[data.key] = data.val(); render(); });
-    onChildChanged(strokesRef, (data) => { strokes[data.key] = data.val(); render(); });
-    onChildRemoved(strokesRef, (data) => { strokes[data.key] = null; render(); });
+
+    onChildChanged(strokesRef, (snapshot) => {
+        const data = snapshot.val();
+        const key = snapshot.key;
+        const existingIndex = strokes.findIndex(s => s.id === key);
+        if (existingIndex !== -1) {
+            strokes[existingIndex] = { ...data, id: key };
+            render();
+        }
+    });
+
+    onChildRemoved(strokesRef, (snapshot) => {
+        const key = snapshot.key;
+        strokes = strokes.filter(s => s.id !== key);
+        render();
+    });
+
     onValue(undoStackRef, (snapshot) => undoStack = snapshot.val() || []);
     onValue(redoStackRef, (snapshot) => redoStack = snapshot.val() || []);
 }
@@ -114,22 +142,23 @@ svg.addEventListener('pointerdown', PointerDown);
 svg.addEventListener('pointermove', PointerMove);
 
 // Eraser Logic 
-function deleteStroke(index) {
-    if (!strokes[index]) return;
+function deleteStroke(id) {
+    const index = strokes.findIndex(s => s.id === id);
+    if (index === -1) return;
     
-    // Save JUST the single stroke to the undo stack, not the whole array
-    undoStack.push(strokes[index]);
+    const strokeToDelete = strokes[index];
+    undoStack.push(strokeToDelete);
     if (isOnlineMode) set(undoStackRef, undoStack);
 
-    strokes[index] = null;
-    if (isOnlineMode) remove(ref(db, `strokes/${index}`));
+    strokes.splice(index, 1);
+    if (isOnlineMode) remove(ref(db, `strokes/${id}`));
     render();
 }
 
 function render() {
     svg.innerHTML = ''; 
     
-    strokes.forEach((stroke, index) => {
+    strokes.forEach((stroke) => {
         if (!stroke) return;
         const points = Array.isArray(stroke) ? stroke : stroke.points;
         const color = Array.isArray(stroke) ? '#000000' : stroke.color;
@@ -146,7 +175,8 @@ function render() {
         const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         pathEl.setAttribute('d', pathData);
         pathEl.setAttribute('fill', color);
-        pathEl.setAttribute('data-index', index);
+        // Bind the precise unique ID instead of the array index
+        pathEl.setAttribute('data-id', stroke.id);
         pathEl.style.pointerEvents = currentTool === 'erase' ? 'auto' : 'none';
         svg.appendChild(pathEl);
     });
@@ -156,7 +186,7 @@ function render() {
 
 function PointerDown(e) {
     if (currentTool === 'erase' && e.target.tagName === 'path') {
-        deleteStroke(e.target.getAttribute('data-index'));
+        deleteStroke(e.target.getAttribute('data-id'));
         return;
     }
 
@@ -165,8 +195,18 @@ function PointerDown(e) {
         if (isOnlineMode) set(redoStackRef, redoStack);
         
         const strokeObj = { points: [[e.pageX, e.pageY, e.pressure]], color: currentColor, size: currentSize };
+        
+        if (isOnlineMode) {
+            const newRef = push(strokesRef);
+            currentStrokeId = newRef.key;
+            strokeObj.id = currentStrokeId;
+            set(newRef, strokeObj);
+        } else {
+            currentStrokeId = Date.now().toString(); // Unique enough for offline
+            strokeObj.id = currentStrokeId;
+        }
+        
         strokes.push(strokeObj);
-        if (isOnlineMode) set(ref(db, `strokes/${strokes.length - 1}`), strokeObj);
         render();
     }
 }
@@ -174,37 +214,33 @@ function PointerDown(e) {
 function PointerMove(e) {
     if (currentTool === 'erase' && e.buttons === 1) {
         const el = document.elementFromPoint(e.clientX, e.clientY);
-        if (el && el.tagName === 'path') deleteStroke(el.getAttribute('data-index'));
+        if (el && el.tagName === 'path') deleteStroke(el.getAttribute('data-id'));
         return;
     }
 
-    if (e.buttons === 1 && strokes.length > 0 && currentTool === 'draw') {
-        const lastStroke = strokes[strokes.length - 1];
-        const points = Array.isArray(lastStroke) ? lastStroke : lastStroke.points;
-        points.push([e.pageX, e.pageY, e.pressure]);
-        if (isOnlineMode) set(ref(db, `strokes/${strokes.length - 1}`), lastStroke);
-        render();
+    if (e.buttons === 1 && currentStrokeId && currentTool === 'draw') {
+        const index = strokes.findIndex(s => s.id === currentStrokeId);
+        if (index !== -1) {
+            strokes[index].points.push([e.pageX, e.pageY, e.pressure]);
+            if (isOnlineMode) {
+                set(ref(db, `strokes/${currentStrokeId}`), strokes[index]);
+            }
+            render();
+        }
     }
 }
 
 // Universal Undo Logic
 function Undo() {
     if (strokes.length === 0) return;
+    const item = strokes.pop(); 
     
-    // Find the last actual stroke (skipping erased 'null' slots)
-    let lastIndex = strokes.length - 1;
-    while(lastIndex >= 0 && strokes[lastIndex] === null) {
-        lastIndex--;
+    undoStack.push(item);
+    if (isOnlineMode) {
+        set(undoStackRef, undoStack);
+        remove(ref(db, `strokes/${item.id}`)); 
     }
-
-    if (lastIndex >= 0) {
-        undoStack.push(strokes[lastIndex]);
-        if (isOnlineMode) set(undoStackRef, undoStack);
-        
-        strokes[lastIndex] = null;
-        if (isOnlineMode) remove(ref(db, `strokes/${lastIndex}`)); 
-        render();
-    }
+    render();
 }
 
 // Universal Redo Logic
@@ -213,15 +249,16 @@ function Redo() {
         const item = undoStack.pop();
         
         if (Array.isArray(item)) { 
-            // It was a full clear canvas action
             strokes = item;
             if (isOnlineMode) {
-                strokes.forEach((s, i) => s && set(ref(db, `strokes/${i}`), s));
+                // Ensure clear wipes before re-populating array
+                remove(strokesRef).then(() => {
+                    item.forEach(s => set(ref(db, `strokes/${s.id}`), s));
+                });
             }
         } else { 
-            // It was a single stroke (either undone or erased)
             strokes.push(item);
-            if (isOnlineMode) set(ref(db, `strokes/${strokes.length - 1}`), item);
+            if (isOnlineMode) set(ref(db, `strokes/${item.id}`), item);
         }
         
         if (isOnlineMode) set(undoStackRef, undoStack);
@@ -230,10 +267,13 @@ function Redo() {
 }
 
 document.getElementById("btn-clear").addEventListener("click", () => {
-    undoStack.push([...strokes]); // Push whole array for clearing
+    undoStack.push([...strokes]); 
     if (isOnlineMode) set(undoStackRef, undoStack);
+    
     strokes = [];
-    if (isOnlineMode) remove(strokesRef); 
+    if (isOnlineMode) {
+        remove(strokesRef); // This absolutely nukes the collection from orbit
+    }
     localStorage.removeItem('storedStrokes');
     render();
 });
